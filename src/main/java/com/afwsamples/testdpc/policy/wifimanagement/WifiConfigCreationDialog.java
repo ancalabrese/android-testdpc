@@ -34,10 +34,12 @@ import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.Toast;
 import com.afwsamples.testdpc.R;
+import android.os.Build;
+import android.util.Log;
 
 /** Displays a dialog for creating a wifi configuration. */
 public class WifiConfigCreationDialog extends DialogFragment
-    implements AdapterView.OnItemSelectedListener, View.OnClickListener, TextWatcher {
+        implements AdapterView.OnItemSelectedListener, View.OnClickListener, TextWatcher {
 
   public static final int SECURITY_TYPE_NONE = 0;
   public static final int SECURITY_TYPE_WEP = 1;
@@ -50,7 +52,9 @@ public class WifiConfigCreationDialog extends DialogFragment
   private boolean mPasswordDirty;
   private Button mSaveButton;
   private int mSecurityType;
+  private int mMACRandomizationSetting;
   private Spinner mSecurityChoicesSpinner;
+  private Spinner mMacRandomizationChoicesSpinner;
   private WifiConfiguration mOldConfig;
   private Listener mListener;
 
@@ -68,16 +72,16 @@ public class WifiConfigCreationDialog extends DialogFragment
   }
 
   public static WifiConfigCreationDialog newInstance(
-      WifiConfiguration oldConfig, Listener listener) {
+          WifiConfiguration oldConfig, Listener listener) {
     WifiConfigCreationDialog dialog = new WifiConfigCreationDialog();
     dialog.mOldConfig = oldConfig;
     dialog.mListener = listener;
     // For a config to be updated we allow the current password if there is one.
     dialog.mPasswordDirty =
-        // Security type is neither WPA ...
-        !oldConfig.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.WPA_PSK)
-            // ... nor WEP.
-            && !oldConfig.allowedAuthAlgorithms.get(WifiConfiguration.AuthAlgorithm.SHARED);
+            // Security type is neither WPA ...
+            !oldConfig.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.WPA_PSK)
+                    // ... nor WEP.
+                    && !oldConfig.allowedAuthAlgorithms.get(WifiConfiguration.AuthAlgorithm.SHARED);
     return dialog;
   }
 
@@ -95,19 +99,25 @@ public class WifiConfigCreationDialog extends DialogFragment
     mSecurityChoicesSpinner = (Spinner) dialogView.findViewById(R.id.security);
     mSecurityChoicesSpinner.setOnItemSelectedListener(this);
     ArrayAdapter<CharSequence> adapter =
-        ArrayAdapter.createFromResource(
-            getActivity(), R.array.wifi_security_choices, android.R.layout.simple_spinner_item);
+            ArrayAdapter.createFromResource(
+                    getActivity(), R.array.wifi_security_choices, android.R.layout.simple_spinner_item);
     adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
     mSecurityChoicesSpinner.setAdapter(adapter);
+
+    mMacRandomizationChoicesSpinner = (Spinner) dialogView.findViewById(R.id.mac_randomization);
+    mMacRandomizationChoicesSpinner.setOnItemSelectedListener(this);
+    ArrayAdapter<CharSequence> macChoicesAdapter = ArrayAdapter.createFromResource(
+            getActivity(), R.array.wifi_mac_randomization_choices, android.R.layout.simple_spinner_item);
+    mMacRandomizationChoicesSpinner.setAdapter(macChoicesAdapter);
     initialize();
 
     AlertDialog.Builder builder =
-        new AlertDialog.Builder(getActivity())
-            .setTitle(R.string.add_network)
-            .setView(dialogView)
-            // Listener for save button will be set in onStart().
-            .setPositiveButton(R.string.wifi_save, null)
-            .setNegativeButton(R.string.wifi_cancel, null);
+            new AlertDialog.Builder(getActivity())
+                    .setTitle(R.string.add_network)
+                    .setView(dialogView)
+                    // Listener for save button will be set in onStart().
+                    .setPositiveButton(R.string.wifi_save, null)
+                    .setNegativeButton(R.string.wifi_cancel, null);
 
     return builder.create();
   }
@@ -131,6 +141,7 @@ public class WifiConfigCreationDialog extends DialogFragment
       WifiConfiguration config = new WifiConfiguration();
       config.SSID = getQuotedString(mSsidText.getText().toString());
       updateConfigurationSecurity(config);
+      updateMacRandomizationSettings(config);
       if (mOldConfig != null) {
         config.networkId = mOldConfig.networkId;
       }
@@ -155,6 +166,8 @@ public class WifiConfigCreationDialog extends DialogFragment
   }
 
   private void initialize() {
+    mMACRandomizationSetting = WifiConfiguration.RANDOMIZATION_AUTO;
+
     if (mOldConfig != null) {
       mSsidText.setText(mOldConfig.SSID.replace("\"", ""));
       mPasswordText.setText("");
@@ -165,11 +178,17 @@ public class WifiConfigCreationDialog extends DialogFragment
       } else {
         mSecurityType = SECURITY_TYPE_NONE;
       }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Log.i("TESTDPC", "MAC setting: " + mOldConfig.getMacRandomizationSetting());
+        Log.i("TESTDPC", "MAC randomized value: " + mOldConfig.getRandomizedMacAddress());
+        mMACRandomizationSetting = mOldConfig.getMacRandomizationSetting();
+      }
     } else {
       mSsidText.setText("");
       mPasswordText.setText("");
       mSecurityType = SECURITY_TYPE_NONE;
     }
+    mMacRandomizationChoicesSpinner.setSelection(mMACRandomizationSetting);
     mSecurityChoicesSpinner.setSelection(mSecurityType);
   }
 
@@ -179,39 +198,47 @@ public class WifiConfigCreationDialog extends DialogFragment
         config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
         break;
       case SECURITY_TYPE_WEP:
-        {
-          config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-          config.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN);
-          config.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.SHARED);
-          int length = mPasswordText.length();
-          if (length != 0) {
-            String password = mPasswordText.getText().toString();
-            // WEP-40, WEP-104, and 256-bit WEP (WEP-232?)
-            if ((length == 10 || length == 26 || length == 58)
-                && password.matches("[0-9A-Fa-f]*")) {
-              config.wepKeys[0] = password;
-            } else {
-              config.wepKeys[0] = getQuotedString(password);
-            }
-            config.wepTxKeyIndex = 0;
+      {
+        config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+        config.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN);
+        config.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.SHARED);
+        int length = mPasswordText.length();
+        if (length != 0) {
+          String password = mPasswordText.getText().toString();
+          // WEP-40, WEP-104, and 256-bit WEP (WEP-232?)
+          if ((length == 10 || length == 26 || length == 58)
+                  && password.matches("[0-9A-Fa-f]*")) {
+            config.wepKeys[0] = password;
+          } else {
+            config.wepKeys[0] = getQuotedString(password);
           }
+          config.wepTxKeyIndex = 0;
         }
-        break;
+      }
+      break;
       case SECURITY_TYPE_WPA:
-        {
-          config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-          int length = mPasswordText.length();
-          if (length != 0) {
-            String password = mPasswordText.getText().toString();
-            if (password.matches("[0-9A-Fa-f]{64}")) {
-              config.preSharedKey = password;
-            } else {
-              config.preSharedKey = getQuotedString(password);
-            }
+      {
+        config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+        int length = mPasswordText.length();
+        if (length != 0) {
+          String password = mPasswordText.getText().toString();
+          if (password.matches("[0-9A-Fa-f]{64}")) {
+            config.preSharedKey = password;
+          } else {
+            config.preSharedKey = getQuotedString(password);
           }
         }
-        break;
+      }
+      break;
     }
+  }
+
+  private void updateMacRandomizationSettings(WifiConfiguration config){
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+      return;
+    }
+
+    config.setMacRandomizationSetting(mMACRandomizationSetting);
   }
 
   private String getQuotedString(String string) {
@@ -220,7 +247,7 @@ public class WifiConfigCreationDialog extends DialogFragment
 
   @Override
   public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-    if (parent.getId() == R.id.security) {
+    if (parent.getId() == R.id.security){
       mSecurityType = pos;
       switch (mSecurityType) {
         case SECURITY_TYPE_NONE:
@@ -228,7 +255,7 @@ public class WifiConfigCreationDialog extends DialogFragment
           break;
         case SECURITY_TYPE_WPA:
           mPasswordText.setHint(
-              mOldConfig == null ? R.string.minimum_limit : R.string.wifi_unchanged);
+                  mOldConfig == null ? R.string.minimum_limit : R.string.wifi_unchanged);
           // Fallthrough
         case SECURITY_TYPE_WEP:
           mPasswordView.setVisibility(View.VISIBLE);
@@ -236,16 +263,19 @@ public class WifiConfigCreationDialog extends DialogFragment
           break;
       }
     }
+    if(parent.getId() == R.id.mac_randomization){
+      mMACRandomizationSetting = pos;
+    }
     enableSaveButtonIfAppropriate();
   }
 
   private void enableSaveButtonIfAppropriate() {
     boolean enabled = (mSsidText.length() != 0);
     enabled =
-        enabled
-            && ((mSecurityType != SECURITY_TYPE_WPA)
-                || mPasswordText.length() >= 8
-                || (!mPasswordDirty && mOldConfig != null));
+            enabled
+                    && ((mSecurityType != SECURITY_TYPE_WPA)
+                    || mPasswordText.length() >= 8
+                    || (!mPasswordDirty && mOldConfig != null));
     if (mSaveButton != null) {
       mSaveButton.setEnabled(enabled);
     }

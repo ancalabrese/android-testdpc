@@ -337,6 +337,13 @@
         <!-- Do not translate. -->
         <item>WPA/WPA2</item>
     </string-array>
+    <string name="wifi_mac_randomization">MAC randomization</string>
+    <string-array name="wifi_mac_randomization_choices">
+        <item>None</item>
+        <item>Persistent</item>
+        <item>Not persistent</item>
+        <item>Auto</item>
+    </string-array>
     <string name="wifi_password">Password</string>
     <string name="wifi_show_password">Show password</string>
     <string name="minimum_limit">At least 8 characters</string>
@@ -1294,10 +1301,10 @@
     <string name="mte_section">MTE settings</string>
     <string name="mte_policy">Set MTE policy</string>
     <string-array name="mte_policy_options">
-      <!-- IMPORTANT: Must match order of items in MtePolicy in DevicePolicyManager. -->
-      <item>Do not force</item>
-      <item>Force on</item>
-      <item>Force off</item>
+        <!-- IMPORTANT: Must match order of items in MtePolicy in DevicePolicyManager. -->
+        <item>Do not force</item>
+        <item>Force on</item>
+        <item>Force off</item>
     </string-array>
 
     <!--  Strings for managed subscriptions policy  -->
@@ -1314,5 +1321,6 @@
     <string name="credential_manager_clear_policy">Clear policy</string>
     <string name="credential_manager_policy_applied_toast">Policy has been applied</string>
     <string name="credential_manager_policy_title">Enter package name of Credential Provider</string>
+    <string name="mac_randomization_setting">MAC randomization</string>
 
 </resources>
